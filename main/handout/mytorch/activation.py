@@ -66,11 +66,14 @@ class Sigmoid(Activation):
 
     def forward(self, x):
         # Might we need to store something before returning?
-        raise NotImplemented
+        sigmoid_forward = 1 / (1 + np.exp(-x))
+        self.state = sigmoid_forward
+        return sigmoid_forward
 
     def derivative(self):
         # Maybe something we need later in here...
-        raise NotImplemented
+        sigmoid_derivative = np.multiply(self.state, (1 - self.state))
+        return sigmoid_derivative
 
 
 class Tanh(Activation):
@@ -83,10 +86,13 @@ class Tanh(Activation):
         super(Tanh, self).__init__()
 
     def forward(self, x):
-        raise NotImplemented
+        tanh_forward = (np.exp(x) - np.exp(-x)) / (np.exp(x) + np.exp(-x))
+        self.state = tanh_forward
+        return tanh_forward
 
     def derivative(self):
-        raise NotImplemented
+        tanh_derivative = 1 - np.square(self.state)
+        return tanh_derivative
 
 
 class ReLU(Activation):
@@ -99,7 +105,10 @@ class ReLU(Activation):
         super(ReLU, self).__init__()
 
     def forward(self, x):
-        raise NotImplemented
+        relu_forward = np.where(x > 0, x, 0)
+        self.state = relu_forward
+        return relu_forward
 
     def derivative(self):
-        raise NotImplemented
+        relu_derivative = np.where(self.state > 0, 1.0, 0.0)
+        return relu_derivative
