@@ -46,21 +46,35 @@ class BatchNorm(object):
         So see what values you need to recompute when eval is True.
         """
 
-        # if eval:
-        #    # ???
 
         self.x = x
 
-        # self.mean = # ???
-        # self.var = # ???
-        # self.norm = # ???
-        # self.out = # ???
+        mean = np.empty(x.shape[0])
+        variance = np.empty(x.shape[0])
+        norm_input = np.empty(x.shape)
+
+        for idx, item in enumerate(x):
+            row_mean = np.mean(item)
+            mean[idx] = row_mean
+            row_variance = np.var(item)
+            variance[idx] = row_variance
+            norm_input[idx] = (item - row_mean) / np.sqrt(row_variance + self.eps)
+
+        output = (self.gamma * self.norm) + self.beta
+        self.mean = mean
+        self.var = variance
+        self.norm = norm_input
+        self.out = output
 
         # Update running batch statistics
-        # self.running_mean = # ???
-        # self.running_var = # ???
+        self.running_mean = (self.alpha * self.running_mean) + ((1 - self.alpha) * self.mean)
+        self.running_var = (self.alpha * self.var) + ((1 - self.alpha) * self.var)
 
-        raise NotImplemented
+        if eval:
+            self.running_mean = mean
+            self.running_var = variance
+
+        return output
 
 
     def backward(self, delta):
@@ -71,4 +85,16 @@ class BatchNorm(object):
             out (np.array): (batch size, in feature)
         """
 
-        raise NotImplemented
+        batch_size = delta.shape[0]
+        self.dbeta = np.sum(delta, axis=0)
+        self.dgamma = np.sum((delta * self.norm), axis=0)
+
+        dnorm = delta * self.dgamma
+        mean_deviation = self.x - self.mean
+        var_inverse = (1 / np.sqrt(self.var + self.eps))
+        dvariance = -0.5 * np.sum(dnorm * mean_deviation * (var_inverse**3), axis=0)
+        dmu = -1 * (np.sum((dnorm * var_inverse), axis=0) + ((2 / batch_size) * dvariance * np.sum(mean_deviation, axis=0)))
+
+        dx = (dnorm * var_inverse) + (dvariance * (2 * mean_deviation) / batch_size) + (dmu / batch_size)
+
+        return dx
