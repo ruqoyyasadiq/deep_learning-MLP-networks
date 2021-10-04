@@ -70,7 +70,11 @@ class MLP(object):
 
         # If batch norm, add batch norm layers into the list 'self.bn_layers'
         if self.bn:
-            self.bn_layers = [BatchNorm(self.linear_layers[k - 1]) for k in range(1, num_bn_layers + 1)]
+            # batch_input_size = hiddens
+            # batch_input_size.append(self.output_size)
+            # print(f"batch_input_size: {batch_input_size}")
+            self.bn_layers = [BatchNorm(output_sizes[k]) for k in range(self.num_bn_layers)]
+            # self.bn_layers = [BatchNorm(batch_input_size[k]) for k in range(num_bn_layers)]
 
 
     def forward(self, x):
@@ -81,25 +85,28 @@ class MLP(object):
             out (np.array): (batch size, output_size)
         """
         # Complete the forward pass through your entire MLP.
+        forward_input = x
         for k in range(self.nlayers):
-            if (k == 0):
-                # Obviously, the input to the 0th layer is the provided input.
-                # This value changes as we move across layers
-                forward_input = x 
-            linear_result = self.linear_layers[k].forward(forward_input)
-            # Insert batch norm if permitted
-            # batch.forward goes into activation
-            activation = self.activations[k]
-            activated_result = activation(linear_result)
-            forward_input = activated_result # result of the current layer is set as input to the next layer
+            output = self.linear_layers[k].forward(forward_input)
 
+            if (self.bn and k < self.num_bn_layers):
+                if (self.train_mode):
+                    output = self.bn_layers[k].forward(output)
+                else:
+                    output = self.bn_layers[k].forward(output, eval=True)
 
-        self.output = activated_result
-        return activated_result
+                output = self.activations[k](output)
+            else:
+                output = self.activations[k](output)
+            forward_input = output # result of the current layer is set as input to the next layer
+
+        self.output = output
+        return output
 
     def zero_grads(self):
         # Use numpyArray.fill(0.0) to zero out your backpropped derivatives in each
         # of your linear and batchnorm layers.
+
         for i in range(len(self.linear_layers)):
             # Update weights and biases here
             layers = self.linear_layers
@@ -114,19 +121,18 @@ class MLP(object):
         # (You will add momentum later in the assignment to the linear layers only
         # , not the batchnorm layers)
 
+        # Do the same for batchnorm layers
         for i in range(len(self.linear_layers)):
             # Update weights and biases here
-            layers = self.linear_layers
+            self.linear_layers[i].momentum_W = ((self.momentum * self.linear_layers[i].momentum_W) - (self.lr * self.linear_layers[i].dW))
+            self.linear_layers[i].W = self.linear_layers[i].W + self.linear_layers[i].momentum_W 
+            self.linear_layers[i].momentum_b = ((self.momentum * self.linear_layers[i].momentum_b) - (self.lr * self.linear_layers[i].db))
+            self.linear_layers[i].b = self.linear_layers[i].b + self.linear_layers[i].momentum_b
+        if self.bn:
+            for j in range(len(self.bn_layers)):
+                self.bn_layers[j].beta = self.bn_layers[j].beta - (self.lr * self.bn_layers[j].dbeta)
+                self.bn_layers[j].gamma = self.bn_layers[j].gamma - (self.lr * self.bn_layers[j].dgamma)
 
-
-            layers[i].momentum_W = ((self.momentum * layers[i].momentum_W) - (self.lr * layers[i].dW))
-            layers[i].W = layers[i].W + layers[i].momentum_W 
-            layers[i].momentum_b = ((self.momentum * layers[i].momentum_b) - (self.lr * layers[i].db))
-            layers[i].b = layers[i].b + layers[i].momentum_b
-            pass
-        # Do the same for batchnorm layers
-
-        # raise NotImplemented
 
     def backward(self, labels):
         # Backpropagate through the activation functions, batch norm and
@@ -138,9 +144,14 @@ class MLP(object):
         
         for k in reversed(range(len(self.linear_layers))):
             delta = criterion_derivative * self.activations[k].derivative()
-            # if batch norm
-            backwards = self.linear_layers[k].backward(delta)
-            criterion_derivative = backwards
+
+            bn_check = (len(self.linear_layers) - (k + 1)) <= self.num_bn_layers if self.bn else False
+            if(self.bn and k < self.num_bn_layers):
+                batch_derivative = self.bn_layers[k].backward(delta)
+                linear_backward = self.linear_layers[k].backward(batch_derivative)
+            else:
+                linear_backward = self.linear_layers[k].backward(delta)
+            criterion_derivative = linear_backward
 
         return criterion_derivative
 

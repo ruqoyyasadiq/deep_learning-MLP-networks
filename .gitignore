@@ -1,2 +1,9 @@
 main/handout/autograder/
-
+**/__pycache__
+autograder
+toyproblem
+writeup
+*pdf
+handin.tar
+create_tarball.sh
+**/.DS_Store

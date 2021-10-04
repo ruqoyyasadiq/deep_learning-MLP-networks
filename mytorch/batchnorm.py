@@ -45,36 +45,22 @@ class BatchNorm(object):
         training phase of the problem or are we in the inference phase.
         So see what values you need to recompute when eval is True.
         """
+        if eval:
+            self.norm = (x - self.running_mean) / np.sqrt(self.running_var + self.eps)
+            self.out = (self.gamma * self.norm) + self.beta
 
+            return self.out
 
         self.x = x
-
-        mean = np.empty(x.shape[0])
-        variance = np.empty(x.shape[0])
-        norm_input = np.empty(x.shape)
-
-        for idx, item in enumerate(x):
-            row_mean = np.mean(item)
-            mean[idx] = row_mean
-            row_variance = np.var(item)
-            variance[idx] = row_variance
-            norm_input[idx] = (item - row_mean) / np.sqrt(row_variance + self.eps)
-
-        output = (self.gamma * self.norm) + self.beta
-        self.mean = mean
-        self.var = variance
-        self.norm = norm_input
-        self.out = output
+        self.mean = np.mean(x, axis=0, keepdims=True)
+        self.var = np.var(x, axis=0, keepdims=True)
+        self.norm = (x - self.mean) / np.sqrt(self.var + self.eps)
+        self.output = (self.gamma * self.norm) + self.beta
 
         # Update running batch statistics
         self.running_mean = (self.alpha * self.running_mean) + ((1 - self.alpha) * self.mean)
-        self.running_var = (self.alpha * self.var) + ((1 - self.alpha) * self.var)
-
-        if eval:
-            self.running_mean = mean
-            self.running_var = variance
-
-        return output
+        self.running_var = (self.alpha * self.running_var) + ((1 - self.alpha) * self.var)
+        return self.output
 
 
     def backward(self, delta):
@@ -84,12 +70,12 @@ class BatchNorm(object):
         Return:
             out (np.array): (batch size, in feature)
         """
-
+        
         batch_size = delta.shape[0]
-        self.dbeta = np.sum(delta, axis=0)
-        self.dgamma = np.sum((delta * self.norm), axis=0)
+        self.dbeta = np.sum(delta, axis=0, keepdims=True)
+        self.dgamma = np.sum(self.norm * delta, axis=0, keepdims=True)
 
-        dnorm = delta * self.dgamma
+        dnorm = self.gamma * delta
         mean_deviation = self.x - self.mean
         var_inverse = (1 / np.sqrt(self.var + self.eps))
         dvariance = -0.5 * np.sum(dnorm * mean_deviation * (var_inverse**3), axis=0)
