@@ -48,7 +48,14 @@ class SoftmaxCrossEntropy(Criterion):
         self.logits = x
         self.labels = y
 
-        raise NotImplemented
+        c = 0.01 # Constant value for LogSumExp manipulation in order to attain numerical stability
+
+        sm_cross_entropy = np.empty(x.shape[0])
+        for idx, item in enumerate(x):
+            logsumexp = np.log(np.sum(np.exp(item - c))) + c
+            sm_cross_entropy[idx] = -np.sum(y[idx] * (np.log(np.exp(item)) - logsumexp))
+    
+        return sm_cross_entropy
 
     def derivative(self):
         """
@@ -56,4 +63,8 @@ class SoftmaxCrossEntropy(Criterion):
             out (np.array): (batch size, 10)
         """
 
-        raise NotImplemented
+        sm_derivative = np.empty_like(self.logits)
+        for idx, item in enumerate(self.logits):
+            sm_derivative[idx] = (np.exp(item) / np.sum(np.exp(item))) - self.labels[idx]
+
+        return sm_derivative

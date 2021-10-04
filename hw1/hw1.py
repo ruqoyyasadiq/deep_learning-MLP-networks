@@ -62,11 +62,19 @@ class MLP(object):
         # Initialize and add all your linear layers into the list 'self.linear_layers'
         # (HINT: self.foo = [ bar(???) for ?? in ? ])
         # (HINT: Can you use zip here?)
-        self.linear_layers = None
+        input_sizes = [self.input_size]
+        input_sizes.extend(hiddens)
+        output_sizes = hiddens
+        output_sizes.append(self.output_size)
+        self.linear_layers = [Linear(input_sizes[k], output_sizes[k], weight_init_fn, bias_init_fn) for k in range(self.nlayers)]
 
         # If batch norm, add batch norm layers into the list 'self.bn_layers'
         if self.bn:
-            self.bn_layers = None
+            # batch_input_size = hiddens
+            # batch_input_size.append(self.output_size)
+            # print(f"batch_input_size: {batch_input_size}")
+            self.bn_layers = [BatchNorm(output_sizes[k]) for k in range(self.num_bn_layers)]
+            # self.bn_layers = [BatchNorm(batch_input_size[k]) for k in range(num_bn_layers)]
 
 
     def forward(self, x):
@@ -77,12 +85,35 @@ class MLP(object):
             out (np.array): (batch size, output_size)
         """
         # Complete the forward pass through your entire MLP.
-        raise NotImplemented
+        forward_input = x
+        for k in range(self.nlayers):
+            output = self.linear_layers[k].forward(forward_input)
+
+            if (self.bn and k < self.num_bn_layers):
+                if (self.train_mode):
+                    output = self.bn_layers[k].forward(output)
+                else:
+                    output = self.bn_layers[k].forward(output, eval=True)
+
+                output = self.activations[k](output)
+            else:
+                output = self.activations[k](output)
+            forward_input = output # result of the current layer is set as input to the next layer
+
+        self.output = output
+        return output
 
     def zero_grads(self):
         # Use numpyArray.fill(0.0) to zero out your backpropped derivatives in each
         # of your linear and batchnorm layers.
-        raise NotImplemented
+
+        for i in range(len(self.linear_layers)):
+            # Update weights and biases here
+            layers = self.linear_layers
+            
+            layers[i].dW.fill(0.0)
+            layers[i].db.fill(0.0)
+            pass
 
     def step(self):
         # Apply a step to the weights and biases of the linear layers.
@@ -90,19 +121,39 @@ class MLP(object):
         # (You will add momentum later in the assignment to the linear layers only
         # , not the batchnorm layers)
 
+        # Do the same for batchnorm layers
         for i in range(len(self.linear_layers)):
             # Update weights and biases here
-            pass
-        # Do the same for batchnorm layers
+            self.linear_layers[i].momentum_W = ((self.momentum * self.linear_layers[i].momentum_W) - (self.lr * self.linear_layers[i].dW))
+            self.linear_layers[i].W = self.linear_layers[i].W + self.linear_layers[i].momentum_W 
+            self.linear_layers[i].momentum_b = ((self.momentum * self.linear_layers[i].momentum_b) - (self.lr * self.linear_layers[i].db))
+            self.linear_layers[i].b = self.linear_layers[i].b + self.linear_layers[i].momentum_b
+        if self.bn:
+            for j in range(len(self.bn_layers)):
+                self.bn_layers[j].beta = self.bn_layers[j].beta - (self.lr * self.bn_layers[j].dbeta)
+                self.bn_layers[j].gamma = self.bn_layers[j].gamma - (self.lr * self.bn_layers[j].dgamma)
 
-        raise NotImplemented
 
     def backward(self, labels):
         # Backpropagate through the activation functions, batch norm and
         # linear layers.
         # Be aware of which return derivatives and which are pure backward passes
         # i.e. take in a loss w.r.t it's output.
-        raise NotImplemented
+        self.criterion.forward(self.output, labels)
+        criterion_derivative = self.criterion.derivative()
+        
+        for k in reversed(range(len(self.linear_layers))):
+            delta = criterion_derivative * self.activations[k].derivative()
+
+            bn_check = (len(self.linear_layers) - (k + 1)) <= self.num_bn_layers if self.bn else False
+            if(self.bn and k < self.num_bn_layers):
+                batch_derivative = self.bn_layers[k].backward(delta)
+                linear_backward = self.linear_layers[k].backward(batch_derivative)
+            else:
+                linear_backward = self.linear_layers[k].backward(delta)
+            criterion_derivative = linear_backward
+
+        return criterion_derivative
 
     def error(self, labels):
         return (np.argmax(self.output, axis = 1) != np.argmax(labels, axis = 1)).sum()

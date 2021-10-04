@@ -38,7 +38,10 @@ class Linear():
         Return:
             out (np.array): (batch size, out feature)
         """
-        raise NotImplemented
+        self.x = x
+        linear_forward = np.dot(x, self.W) + self.b
+
+        return linear_forward
 
     def backward(self, delta):
 
@@ -48,4 +51,10 @@ class Linear():
         Return:
             out (np.array): (batch size, in feature)
         """
-        raise NotImplemented
+        batch_size = self.x.shape[0]
+
+        self.dW = np.dot(self.x.T, delta) / batch_size
+        self.db = np.sum(delta, axis=0, keepdims=True) / batch_size
+
+        dx = np.dot(delta, self.W.T)
+        return dx
